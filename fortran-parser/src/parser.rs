@@ -258,6 +258,11 @@ impl Parser {
     fn parse_variable_declarations(&mut self, type_spec: &TypeSpec) -> ParseResult<Vec<Spanned<Declaration>>> {
         let mut declarations = Vec::new();
         
+        // Consume the double colon (::) if present
+        if self.check_token(&TokenType::DoubleColon) {
+            self.advance();
+        }
+        
         loop {
             let name = self.parse_identifier()
                 .ok_or_else(|| ParseError::UnexpectedToken {
@@ -265,8 +270,8 @@ impl Parser {
                     found: self.peek().cloned().unwrap_or_else(|| self.create_eof_token()),
             })?;
             
-            // Parse attributes (::, DIMENSION, etc.)
-            let attributes = self.parse_attributes()?;
+            // Parse any remaining attributes after the variable name
+            let mut attributes = Vec::new();
             
             // Optional initializer
             let initializer = if self.check_token(&TokenType::Equals) {
