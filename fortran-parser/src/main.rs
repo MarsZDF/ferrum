@@ -8,9 +8,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     
     if args.len() < 2 {
-        eprintln!("Usage: {} <fortran-file>", args.get(0).unwrap_or(&"fortran-parser".to_string()));
+        eprintln!("Usage: {} <fortran-file>", args.first().unwrap_or(&"fortran-parser".to_string()));
         eprintln!("\nExample:");
-        eprintln!("  {} djacg.f", args.get(0).unwrap_or(&"fortran-parser".to_string()));
+        eprintln!("  {} djacg.f", args.first().unwrap_or(&"fortran-parser".to_string()));
         std::process::exit(1);
     }
     

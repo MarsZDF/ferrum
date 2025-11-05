@@ -26,17 +26,31 @@ pub fn tokenize(source: &str, format: Format) -> LexResult<Vec<Token>> {
 
 /// Detect FORTRAN format from source code.
 pub fn detect_format(source: &str) -> Format {
-    // Heuristic: if lines start with numbers in columns 1-5, it's likely fixed-format
-    let lines: Vec<&str> = source.lines().take(10).collect();
+    // Heuristic: check for fixed-format indicators
+    let lines: Vec<&str> = source.lines().take(20).collect();
     let total_lines = lines.len();
     let mut fixed_format_count = 0;
     
     for line in &lines {
-        if line.len() >= 6 {
+        if line.is_empty() {
+            continue;
+        }
+        
+        // Check for fixed-format comment indicator (c, C, * in column 1)
+        if let Some(first_char) = line.chars().next() {
+            if first_char == 'c' || first_char == 'C' || first_char == '*' {
+                fixed_format_count += 1;
+                continue;
+            }
+        }
+        
+        // Check for fixed-format structure (columns 1-5 label, column 6 continuation, column 7+ code)
+        if line.len() >= 7 {
             let col6 = line.chars().nth(5).unwrap_or(' ');
-            // In fixed format, column 6 is continuation character (0 or space)
-            // Column 7+ should have code
-            if col6 == '0' || col6 == ' ' {
+            let col7 = line.chars().nth(6).unwrap_or(' ');
+            
+            // In fixed format, column 6 is continuation (0 or space) and column 7+ has code
+            if (col6 == '0' || col6 == ' ') && col7 != ' ' && col7 != '\t' {
                 // Check if columns 1-5 are numeric or spaces
                 let cols_1_5: String = line.chars().take(5).collect();
                 if cols_1_5.trim().is_empty() || cols_1_5.chars().all(|c| c.is_ascii_digit() || c == ' ') {
