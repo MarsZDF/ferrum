@@ -56,6 +56,7 @@ pub fn detect_format(source: &str) -> Format {
 
 /// Free-format FORTRAN lexer.
 pub struct FreeFormatLexer<'a> {
+    #[allow(dead_code)] // May be used in future for better error reporting
     source: &'a str,
     chars: std::iter::Peekable<std::str::Chars<'a>>,
     current_line: usize,
@@ -108,7 +109,7 @@ impl<'a> FreeFormatLexer<'a> {
         let start_line = self.current_line;
         let start_col = self.current_column;
         
-        let ch = self.advance().ok_or_else(|| LexError::UnexpectedChar {
+        let ch = self.advance().ok_or(LexError::UnexpectedChar {
             ch: '\0',
             line: start_line,
             column: start_col,
@@ -408,7 +409,7 @@ impl<'a> FreeFormatLexer<'a> {
     }
     
     fn matches(&mut self, expected: char) -> bool {
-        self.chars.peek().map_or(false, |&ch| ch == expected)
+        self.chars.peek().is_some_and(|&ch| ch == expected)
     }
     
     fn is_at_end(&mut self) -> bool {

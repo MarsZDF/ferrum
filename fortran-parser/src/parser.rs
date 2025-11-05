@@ -1,3 +1,5 @@
+#![allow(clippy::while_let_loop, clippy::if_same_then_else)] // Allow some clippy warnings for now
+
 use fortran_ast::{
     Declaration, Expression, Intent, Literal, MainProgram, Module, Program, ProgramUnit,
     Span, Spanned, Statement, Subroutine, Function, TypeSpec, Attribute, BinaryOp, UnaryOp,
@@ -37,16 +39,16 @@ impl Parser {
     fn parse_program_unit(&mut self) -> ParseResult<ProgramUnit> {
         if self.check_token(&TokenType::Program) {
             self.parse_main_program()
-                .map(|p| ProgramUnit::MainProgram(p))
+                .map(ProgramUnit::MainProgram)
         } else if self.check_token(&TokenType::Subroutine) {
             self.parse_subroutine()
-                .map(|s| ProgramUnit::Subroutine(s))
+                .map(ProgramUnit::Subroutine)
         } else if self.check_token(&TokenType::Function) {
             self.parse_function()
-                .map(|f| ProgramUnit::Function(f))
+                .map(ProgramUnit::Function)
         } else if self.check_token(&TokenType::Module) {
             self.parse_module()
-                .map(|m| ProgramUnit::Module(m))
+                .map(ProgramUnit::Module)
         } else {
             Err(ParseError::UnexpectedToken {
                 expected: vec!["PROGRAM, SUBROUTINE, FUNCTION, or MODULE".to_string()],
@@ -57,7 +59,7 @@ impl Parser {
     
     /// Parse a main program.
     fn parse_main_program(&mut self) -> ParseResult<MainProgram> {
-        let start = self.consume_token(&TokenType::Program)?;
+        let _start = self.consume_token(&TokenType::Program)?;
         let name = self.parse_identifier_opt();
         
         let declarations = self.parse_declarations()?;
@@ -73,7 +75,7 @@ impl Parser {
         // END PROGRAM
         if self.check_token(&TokenType::EndProgram) {
             self.advance();
-            if let Some(program_name) = self.parse_identifier_opt() {
+            if let Some(_program_name) = self.parse_identifier_opt() {
                 // Name optional but can be present
             }
         }
@@ -88,7 +90,7 @@ impl Parser {
     
     /// Parse a subroutine.
     fn parse_subroutine(&mut self) -> ParseResult<Subroutine> {
-        let start = self.consume_token(&TokenType::Subroutine)?;
+        let _start = self.consume_token(&TokenType::Subroutine)?;
         let name = self.parse_identifier()
             .ok_or_else(|| ParseError::UnexpectedToken {
                 expected: vec!["identifier".to_string()],
@@ -133,7 +135,7 @@ impl Parser {
         // Optional type specification
         let type_spec = self.parse_type_spec_opt();
         
-        let start = self.consume_token(&TokenType::Function)?;
+        let _start = self.consume_token(&TokenType::Function)?;
         let name = self.parse_identifier()
             .ok_or_else(|| ParseError::UnexpectedToken {
                 expected: vec!["identifier".to_string()],
@@ -204,7 +206,7 @@ impl Parser {
     
     /// Parse a module.
     fn parse_module(&mut self) -> ParseResult<Module> {
-        let start = self.consume_token(&TokenType::Module)?;
+        let _start = self.consume_token(&TokenType::Module)?;
         let name = self.parse_identifier()
             .ok_or_else(|| ParseError::UnexpectedToken {
                 expected: vec!["identifier".to_string()],
@@ -315,6 +317,7 @@ impl Parser {
     }
     
     /// Parse variable declarations with a type specification.
+    #[allow(dead_code)] // Legacy method, kept for compatibility
     fn parse_variable_declarations(&mut self, type_spec: &TypeSpec) -> ParseResult<Vec<Spanned<Declaration>>> {
         self.parse_variable_declarations_with_attributes(type_spec, Vec::new())
     }
@@ -336,7 +339,7 @@ impl Parser {
             })?;
             
             // Use the type-level attributes (intent, etc.) for this variable
-            let mut attributes = type_attributes.clone();
+            let attributes = type_attributes.clone();
             
             // Parse any remaining attributes after the variable name
             // (This is less common but possible)
@@ -370,6 +373,7 @@ impl Parser {
     }
     
     /// Parse attributes (::, DIMENSION, INTENT, etc.).
+    #[allow(dead_code)] // Legacy method, functionality moved to declaration parsing
     fn parse_attributes(&mut self) -> ParseResult<Vec<Attribute>> {
         let mut attributes = Vec::new();
         
@@ -610,7 +614,7 @@ impl Parser {
         
         match &token.token_type {
             TokenType::If => {
-                self.parse_if_statement().map(|s| Some(s))
+                self.parse_if_statement().map(Some)
             }
             TokenType::Do => {
                 // Check if next non-trivial token is DoWhile or identifier "while"
@@ -618,11 +622,10 @@ impl Parser {
                 let mut do_idx = self.current;
                 while do_idx < self.tokens.len() {
                     if let Some(token) = self.tokens.get(do_idx) {
-                        if !token.is_trivial() {
-                            if matches!(token.token_type, TokenType::Do) {
+                        if !token.is_trivial()
+                            && matches!(token.token_type, TokenType::Do) {
                                 break; // Found DO token
                             }
-                        }
                     }
                     do_idx += 1;
                 }
@@ -648,30 +651,30 @@ impl Parser {
                 if found_while {
                     // Consume DO token first, then parse DO WHILE
                     self.advance();
-                    self.parse_do_while_statement().map(|s| Some(s))
+                    self.parse_do_while_statement().map(Some)
                 } else {
-                    self.parse_do_statement().map(|s| Some(s))
+                    self.parse_do_statement().map(Some)
                 }
             }
             TokenType::Select => {
-                self.parse_select_case_statement().map(|s| Some(s))
+                self.parse_select_case_statement().map(Some)
             }
             TokenType::Read => {
-                self.parse_read_statement().map(|s| Some(s))
+                self.parse_read_statement().map(Some)
             }
             TokenType::Write => {
-                self.parse_write_statement().map(|s| Some(s))
+                self.parse_write_statement().map(Some)
             }
             TokenType::Print => {
-                self.parse_print_statement().map(|s| Some(s))
+                self.parse_print_statement().map(Some)
             }
             // Note: CALL is not a separate token, it's an identifier followed by parentheses
             // This will be handled in assignment parsing
             TokenType::Return => {
-                self.parse_return_statement().map(|s| Some(s))
+                self.parse_return_statement().map(Some)
             }
             TokenType::Stop => {
-                self.parse_stop_statement().map(|s| Some(s))
+                self.parse_stop_statement().map(Some)
             }
             TokenType::Continue => {
                 self.advance();
@@ -687,7 +690,7 @@ impl Parser {
             }
             TokenType::Identifier(_) => {
                 // Assignment statement
-                self.parse_assignment_statement().map(|s| Some(s))
+                self.parse_assignment_statement().map(Some)
             }
             _ => Ok(None),
         }
@@ -1510,7 +1513,7 @@ impl Parser {
     }
     
     fn check_token(&self, token_type: &TokenType) -> bool {
-        self.peek().map_or(false, |t| &t.token_type == token_type)
+        self.peek().is_some_and(|t| &t.token_type == token_type)
     }
     
     fn check_token_after(&self, token_type: &TokenType, offset: usize) -> bool {
