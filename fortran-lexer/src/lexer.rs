@@ -298,17 +298,34 @@ impl<'a> FreeFormatLexer<'a> {
             if ch.is_ascii_alphabetic() {
                 value.push(self.advance().unwrap());
             } else if ch == '.' && value.len() > 1 {
-                // Found closing period, check if it's a keyword
+                // Found closing period, check what it is
                 value.push(self.advance().unwrap());
-                if let Some(mut token_type) = lookup_keyword(&value) {
-                    // Handle logical literals specially
-                    if value.to_uppercase() == ".TRUE." {
-                        token_type = TokenType::LogicalLiteral(String::from("true"));
-                    } else if value.to_uppercase() == ".FALSE." {
-                        token_type = TokenType::LogicalLiteral(String::from("false"));
-                    }
+                let upper = value.to_uppercase();
+                
+                // Handle logical literals first
+                if upper == ".TRUE." {
+                    return Ok(self.create_token(
+                        TokenType::LogicalLiteral(String::from("true")),
+                        &value,
+                        start_pos,
+                        start_line,
+                        start_col,
+                    ));
+                } else if upper == ".FALSE." {
+                    return Ok(self.create_token(
+                        TokenType::LogicalLiteral(String::from("false")),
+                        &value,
+                        start_pos,
+                        start_line,
+                        start_col,
+                    ));
+                }
+                
+                // Check if it's a logical operator keyword
+                if let Some(token_type) = lookup_keyword(&value) {
                     return Ok(self.create_token(token_type, &value, start_pos, start_line, start_col));
                 }
+                
                 // Not a recognized keyword, break and treat as period
                 break;
             } else {
