@@ -1,6 +1,6 @@
 [workspace]
 members = ["fortran-ast",
-    "fortran-lexer",
+    "fortran-lexer", "fortran-parser",
 ]
 resolver = "2"
 
