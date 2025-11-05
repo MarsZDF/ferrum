@@ -5,6 +5,9 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 edition.workspace = true
+description = "Fast, modular lexer for FORTRAN source code supporting both fixed-format and free-format FORTRAN"
+keywords = ["fortran", "lexer", "tokenizer", "compiler", "parser"]
+categories = ["parsing", "development-tools"]
 
 [dependencies]
 

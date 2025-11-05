@@ -6,7 +6,7 @@ resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Marco Zaccaria Di Fraia <marco.z.difraia@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/MarsZDF/ferrum"
 edition = "2021"
