@@ -231,7 +231,6 @@ Licensed under the MIT License - see [LICENSE](LICENSE) for details.
 - [ ] fortran-parser - Full FORTRAN grammar support
 
 ### Planned 📋
-- [ ] fortran-parser - Full FORTRAN grammar support
 - [ ] fortran-analyzer-* - Analysis modules
   - [ ] Code quality metrics
   - [ ] Dead code detection
