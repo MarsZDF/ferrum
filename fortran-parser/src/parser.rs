@@ -150,10 +150,29 @@ impl Parser {
             Vec::new()
         };
         
-        // Optional RESULT clause
-        let result_name = if self.check_token(&TokenType::Identifier("result".to_string())) {
-            // Handle RESULT keyword
-            None
+        // Optional RESULT clause: result(name)
+        let result_name = if let Some(token) = self.peek() {
+            if let TokenType::Identifier(ref name) = token.token_type {
+                if name.to_uppercase() == "RESULT" {
+                    self.advance(); // consume RESULT
+                    if self.check_token(&TokenType::LeftParen) {
+                        self.advance(); // consume (
+                        let name = self.parse_identifier()
+                            .ok_or_else(|| ParseError::UnexpectedToken {
+                                expected: vec!["identifier".to_string()],
+                                found: self.peek().cloned().unwrap_or_else(|| self.create_eof_token()),
+                            })?;
+                        self.consume_token(&TokenType::RightParen)?;
+                        Some(name)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -241,8 +260,49 @@ impl Parser {
             
             // Parse type declarations
             if let Some(type_spec) = self.parse_type_spec_opt() {
-                // Parse variable declarations
-                let vars = self.parse_variable_declarations(&type_spec)?;
+                // Parse attributes (like intent(in), dimension, etc.) before ::
+                // Attributes can be comma-separated: integer, intent(in), dimension(10) :: x
+                let mut type_attributes = Vec::new();
+                while self.check_token(&TokenType::Comma) {
+                    self.advance(); // consume comma
+                    // Parse attribute after comma
+                    if self.check_token(&TokenType::Intent) {
+                        self.advance();
+                        self.consume_token(&TokenType::LeftParen)?;
+                        let intent_str = self.parse_identifier()
+                            .ok_or_else(|| ParseError::UnexpectedToken {
+                                expected: vec!["IN, OUT, or INOUT".to_string()],
+                                found: self.peek().cloned().unwrap_or_else(|| self.create_eof_token()),
+                            })?;
+                        let intent = match intent_str.to_uppercase().as_str() {
+                            "IN" => Intent::In,
+                            "OUT" => Intent::Out,
+                            "INOUT" => Intent::InOut,
+                            _ => return Err(ParseError::InvalidSyntax {
+                                message: format!("Invalid INTENT: {}", intent_str),
+                                line: self.current_line(),
+                                column: self.current_column(),
+                            }),
+                        };
+                        self.consume_token(&TokenType::RightParen)?;
+                        type_attributes.push(Attribute::Intent(intent));
+                    } else if self.check_token(&TokenType::Allocatable) {
+                        self.advance();
+                        type_attributes.push(Attribute::Allocatable);
+                    } else if self.check_token(&TokenType::Dimension) {
+                        self.advance();
+                        self.consume_token(&TokenType::LeftParen)?;
+                        let dims = self.parse_dimension_list()?;
+                        self.consume_token(&TokenType::RightParen)?;
+                        type_attributes.push(Attribute::Dimension(dims));
+                    } else {
+                        // Unknown attribute, break and let variable parsing handle it
+                        break;
+                    }
+                }
+                
+                // Parse variable declarations (:: x, y)
+                let vars = self.parse_variable_declarations_with_attributes(&type_spec, type_attributes)?;
                 for var in vars {
                     declarations.push(var);
                 }
@@ -256,6 +316,11 @@ impl Parser {
     
     /// Parse variable declarations with a type specification.
     fn parse_variable_declarations(&mut self, type_spec: &TypeSpec) -> ParseResult<Vec<Spanned<Declaration>>> {
+        self.parse_variable_declarations_with_attributes(type_spec, Vec::new())
+    }
+    
+    /// Parse variable declarations with a type specification and attributes.
+    fn parse_variable_declarations_with_attributes(&mut self, type_spec: &TypeSpec, type_attributes: Vec<Attribute>) -> ParseResult<Vec<Spanned<Declaration>>> {
         let mut declarations = Vec::new();
         
         // Consume the double colon (::) if present
@@ -270,8 +335,11 @@ impl Parser {
                     found: self.peek().cloned().unwrap_or_else(|| self.create_eof_token()),
             })?;
             
+            // Use the type-level attributes (intent, etc.) for this variable
+            let mut attributes = type_attributes.clone();
+            
             // Parse any remaining attributes after the variable name
-            let mut attributes = Vec::new();
+            // (This is less common but possible)
             
             // Optional initializer
             let initializer = if self.check_token(&TokenType::Equals) {
@@ -422,11 +490,28 @@ impl Parser {
     fn parse_executable_statements(&mut self) -> ParseResult<Vec<Spanned<Statement>>> {
         let mut statements = Vec::new();
         
-        while !self.is_at_end() && self.is_executable_statement() {
-            if let Some(statement) = self.parse_statement_opt()? {
-                statements.push(statement);
-            } else {
+        // Stop when we hit END tokens or end of file
+        while !self.is_at_end() {
+            // Check for END tokens first - these mark the end of executable section
+            if matches!(
+                self.peek().map(|t| &t.token_type),
+                Some(TokenType::EndProgram)
+                    | Some(TokenType::EndSubroutine)
+                    | Some(TokenType::EndFunction)
+                    | Some(TokenType::EndModule)
+                    | Some(TokenType::Contains)
+            ) {
                 break;
+            }
+            
+            if self.is_executable_statement() {
+                if let Some(statement) = self.parse_statement_opt()? {
+                    statements.push(statement);
+                } else {
+                    break;
+                }
+            } else {
+                break; // Not an executable statement, stop parsing
             }
         }
         
@@ -434,8 +519,10 @@ impl Parser {
     }
     
     /// Check if current token is an executable statement.
+    /// Note: This excludes END tokens which are handled separately.
     fn is_executable_statement(&self) -> bool {
-        matches!(
+        // Check for explicit statement keywords (but not END tokens - those are handled separately)
+        if matches!(
             self.peek().map(|t| &t.token_type),
             Some(TokenType::If)
                 | Some(TokenType::Do)
@@ -447,8 +534,68 @@ impl Parser {
                 | Some(TokenType::Continue)
                 | Some(TokenType::Cycle)
                 | Some(TokenType::Exit)
-                | Some(TokenType::Identifier(_))
-        )
+                | Some(TokenType::Select)
+                | Some(TokenType::Case)
+                | Some(TokenType::EndIf)
+                | Some(TokenType::EndDo)
+                | Some(TokenType::EndSelect)
+                | Some(TokenType::DoWhile)
+        ) {
+            return true;
+        }
+        
+        // Check for DO WHILE: DO followed by WHILE
+        if let Some(TokenType::Do) = self.peek().map(|t| &t.token_type) {
+            // Peek ahead to see if next non-trivial token is WHILE
+            let mut idx = self.current + 1;
+            while idx < self.tokens.len() {
+                if let Some(token) = self.tokens.get(idx) {
+                    if !token.is_trivial() {
+                        if matches!(token.token_type, TokenType::DoWhile) {
+                            return true; // DO WHILE
+                        } else if let TokenType::Identifier(ref name) = &token.token_type {
+                            if name.to_uppercase() == "WHILE" {
+                                return true; // DO WHILE
+                            }
+                        }
+                        break; // Not DO WHILE
+                    }
+                }
+                idx += 1;
+            }
+        }
+        
+        // Check for assignment: identifier followed by =
+        if let Some(TokenType::Identifier(_)) = self.peek().map(|t| &t.token_type) {
+            // Peek ahead to see if next non-trivial token is =
+            // We need to skip past the current identifier and any whitespace
+            // Start from current position and skip trivial tokens
+            let mut idx = self.current;
+            // First, skip to the current non-trivial token (which is the identifier)
+            while idx < self.tokens.len() {
+                if let Some(token) = self.tokens.get(idx) {
+                    if !token.is_trivial() {
+                        break; // Found the identifier
+                    }
+                }
+                idx += 1;
+            }
+            // Now skip past the identifier and any whitespace
+            idx += 1;
+            while idx < self.tokens.len() {
+                if let Some(token) = self.tokens.get(idx) {
+                    if !token.is_trivial() {
+                        if matches!(token.token_type, TokenType::Equals) {
+                            return true; // This is an assignment
+                        }
+                        break; // Not an assignment
+                    }
+                }
+                idx += 1;
+            }
+        }
+        
+        false
     }
     
     /// Parse a statement (if present).
@@ -467,14 +614,28 @@ impl Parser {
             }
             TokenType::Do => {
                 // Check if next non-trivial token is DoWhile or identifier "while"
-                let mut idx = self.current + 1;
+                // First, find where the DO token actually is (skip whitespace)
+                let mut do_idx = self.current;
+                while do_idx < self.tokens.len() {
+                    if let Some(token) = self.tokens.get(do_idx) {
+                        if !token.is_trivial() {
+                            if matches!(token.token_type, TokenType::Do) {
+                                break; // Found DO token
+                            }
+                        }
+                    }
+                    do_idx += 1;
+                }
+                
+                // Now check the token after DO (skip whitespace)
+                let mut idx = do_idx + 1;
                 let mut found_while = false;
                 while idx < self.tokens.len() {
                     if let Some(token) = self.tokens.get(idx) {
                         if !token.is_trivial() {
                             if matches!(token.token_type, TokenType::DoWhile) {
                                 found_while = true;
-                            } else if let TokenType::Identifier(ref name) = token.token_type {
+                            } else if let TokenType::Identifier(ref name) = &token.token_type {
                                 if name.to_uppercase() == "WHILE" {
                                     found_while = true;
                                 }
@@ -534,7 +695,9 @@ impl Parser {
     
     /// Parse an assignment statement.
     fn parse_assignment_statement(&mut self) -> ParseResult<Spanned<Statement>> {
-        let variable = self.parse_expression()?;
+        // Parse the variable (left-hand side) - this should NOT consume the = sign
+        // We need to parse an expression but stop before = (which is assignment, not equality)
+        let variable = self.parse_expression_without_equals()?;
         self.consume_token(&TokenType::Equals)?;
         let value = self.parse_expression()?;
         
@@ -545,6 +708,64 @@ impl Parser {
             },
             self.create_span(0, 0, 1, 1),
         ))
+    }
+    
+    /// Parse an expression but stop before = (assignment operator).
+    /// This is used for the left-hand side of assignments.
+    fn parse_expression_without_equals(&mut self) -> ParseResult<Spanned<Expression>> {
+        self.parse_binary_expression_without_equals(0)
+    }
+    
+    /// Parse binary expression with precedence, but stop before =.
+    fn parse_binary_expression_without_equals(&mut self, precedence: u8) -> ParseResult<Spanned<Expression>> {
+        let mut left = self.parse_unary_expression()?;
+        
+        loop {
+            // Don't parse = as a binary operator here - it's assignment, not equality
+            if let Some(op) = self.parse_binary_operator_without_equals() {
+                let op_precedence = self.get_operator_precedence(&op);
+                if op_precedence < precedence {
+                    break;
+                }
+                self.advance(); // consume operator
+                let right = self.parse_binary_expression_without_equals(op_precedence + 1)?;
+                left = Spanned::new(
+                    Expression::Binary {
+                        operator: op,
+                        left: Box::new(left),
+                        right: Box::new(right),
+                    },
+                    self.create_span(0, 0, 1, 1),
+                );
+            } else {
+                break;
+            }
+        }
+        
+        Ok(left)
+    }
+    
+    /// Parse binary operator, but exclude = (which is assignment, not equality in this context).
+    fn parse_binary_operator_without_equals(&self) -> Option<BinaryOp> {
+        let token_type = self.peek().map(|t| &t.token_type)?;
+        match token_type {
+            TokenType::Plus => Some(BinaryOp::Add),
+            TokenType::Minus => Some(BinaryOp::Subtract),
+            TokenType::Multiply => Some(BinaryOp::Multiply),
+            TokenType::Divide => Some(BinaryOp::Divide),
+            TokenType::Power => Some(BinaryOp::Power),
+            // Skip Equals - that's for assignment, not comparison
+            TokenType::NotEquals => Some(BinaryOp::NotEqual),
+            TokenType::LessThan => Some(BinaryOp::LessThan),
+            TokenType::LessOrEqual => Some(BinaryOp::LessOrEqual),
+            TokenType::GreaterThan => Some(BinaryOp::GreaterThan),
+            TokenType::GreaterOrEqual => Some(BinaryOp::GreaterOrEqual),
+            TokenType::And => Some(BinaryOp::And),
+            TokenType::Or => Some(BinaryOp::Or),
+            TokenType::Eqv => Some(BinaryOp::Eqv),
+            TokenType::Neqv => Some(BinaryOp::Neqv),
+            _ => None,
+        }
     }
     
     /// Parse an IF statement.
@@ -734,17 +955,32 @@ impl Parser {
             return Ok(CaseSelector::Default);
         }
         
+        // CASE selector can be: value, (value), (value1:value2), etc.
+        // Handle parentheses if present
+        let has_paren = self.check_token(&TokenType::LeftParen);
+        if has_paren {
+            self.advance(); // consume (
+        }
+        
         let start = self.parse_expression()?;
         
         // Check for range (start:end)
         if self.check_token(&TokenType::Colon) {
-            self.advance();
+            self.advance(); // consume :
             let end = self.parse_expression()?;
+            // If we had opening paren, consume closing paren
+            if has_paren {
+                self.consume_token(&TokenType::RightParen)?;
+            }
             Ok(CaseSelector::Range {
                 start,
                 end,
             })
         } else {
+            // Single value - if we had opening paren, consume closing paren
+            if has_paren {
+                self.consume_token(&TokenType::RightParen)?;
+            }
             Ok(CaseSelector::Value(start))
         }
     }
@@ -1163,8 +1399,74 @@ impl Parser {
             Some(TypeSpec::Complex { kind: None })
         } else if self.check_token(&TokenType::Character) {
             self.advance();
+            
+            // Parse CHARACTER length: character(len=10) or character(10)
+            // We handle this carefully since we return Option, not Result
+            let length = if self.check_token(&TokenType::LeftParen) {
+                self.advance(); // consume (
+                
+                // Check for len= or just a number/expression
+                let len_expr = if let Some(token) = self.peek() {
+                    if let TokenType::Identifier(ref name) = &token.token_type {
+                        if name.to_uppercase() == "LEN" {
+                            // Handle len= syntax: character(len=10)
+                            self.advance(); // consume len
+                            if self.check_token(&TokenType::Equals) {
+                                self.advance(); // consume =
+                            }
+                            // Try to parse expression
+                            if let Ok(expr) = self.parse_expression() {
+                                if self.check_token(&TokenType::RightParen) {
+                                    self.advance(); // consume )
+                                    Some(expr)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            // Handle (10) syntax - just a number/expression
+                            if let Ok(expr) = self.parse_expression() {
+                                if self.check_token(&TokenType::RightParen) {
+                                    self.advance(); // consume )
+                                    Some(expr)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                    } else {
+                        // Handle (10) syntax - expression starts with something else
+                        if let Ok(expr) = self.parse_expression() {
+                            if self.check_token(&TokenType::RightParen) {
+                                self.advance(); // consume )
+                                Some(expr)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+                
+                // If we didn't parse successfully, try to consume the paren anyway
+                if len_expr.is_none() && self.check_token(&TokenType::RightParen) {
+                    self.advance();
+                }
+                
+                len_expr
+            } else {
+                None
+            };
+            
             Some(TypeSpec::Character {
-                length: None,
+                length,
                 kind: None,
             })
         } else if self.check_token(&TokenType::Logical) {
