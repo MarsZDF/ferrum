@@ -44,6 +44,10 @@ jobs:
       - name: Test fortran-ast
         working-directory: fortran-ast
         run: cargo test --verbose
+      
+      - name: Test fortran-parser
+        working-directory: fortran-parser
+        run: cargo test --verbose
 
   lint:
     name: Lint
@@ -83,6 +87,14 @@ jobs:
       
       - name: Clippy (fortran-ast)
         working-directory: fortran-ast
+        run: cargo clippy -- -D warnings
+      
+      - name: Check formatting (fortran-parser)
+        working-directory: fortran-parser
+        run: cargo fmt -- --check
+      
+      - name: Clippy (fortran-parser)
+        working-directory: fortran-parser
         run: cargo clippy -- -D warnings
 
   build:

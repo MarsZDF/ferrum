@@ -47,9 +47,17 @@ Abstract Syntax Tree (AST) data structures for FORTRAN programs.
 ### fortran-parser
 Recursive descent parser that converts tokens into a structured AST.
 
-**Status**: 🚧 Planned
+**Features**:
+- ✅ Parses FORTRAN program units (PROGRAM, SUBROUTINE, FUNCTION, MODULE)
+- ✅ Parses declarations (variable declarations, type specifications, attributes)
+- ✅ Parses executable statements (IF, DO, READ, WRITE, PRINT, RETURN, STOP, etc.)
+- ✅ Parses expressions (arithmetic, logical, comparison, function calls)
+- ✅ Error reporting with location information
+- ✅ Handles whitespace and comments gracefully
 
-[📖 Documentation](fortran-parser/README.md)
+**Status**: ✅ Basic parsing implemented
+
+[📖 Documentation](fortran-parser/README.md) | [Examples](fortran-parser/examples/)
 
 ## 🚀 Quick Start
 
@@ -214,12 +222,13 @@ Licensed under the MIT License - see [LICENSE](LICENSE) for details.
 ### Completed ✅
 - [x] fortran-lexer - Free-format FORTRAN lexer
 - [x] fortran-ast - Core AST structures
+- [x] fortran-parser - Basic parser implementation
 - [x] Comprehensive test suite for lexer
 - [x] CI/CD pipeline setup
 
 ### In Progress 🚧
 - [ ] fortran-lexer - Fixed-format FORTRAN lexer
-- [ ] fortran-parser - Basic parser implementation
+- [ ] fortran-parser - Full FORTRAN grammar support
 
 ### Planned 📋
 - [ ] fortran-parser - Full FORTRAN grammar support
