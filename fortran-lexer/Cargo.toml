@@ -1,0 +1,9 @@
+[package]
+name = "fortran-lexer"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+
+[dependencies]
