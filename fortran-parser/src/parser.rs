@@ -3,7 +3,7 @@ use fortran_ast::{
     Span, Spanned, Statement, Subroutine, Function, TypeSpec, Attribute, BinaryOp, UnaryOp,
 };
 use fortran_ast::program::{Argument, ContainsSection, InternalProcedure};
-use fortran_ast::statement::ElseIfClause;
+use fortran_ast::statement::{ElseIfClause, CaseClause, CaseSelector};
 use fortran_lexer::{tokenize, Format, Token, TokenType};
 use crate::error::{ParseError, ParseResult};
 
@@ -461,7 +461,34 @@ impl Parser {
                 self.parse_if_statement().map(|s| Some(s))
             }
             TokenType::Do => {
-                self.parse_do_statement().map(|s| Some(s))
+                // Check if next non-trivial token is DoWhile or identifier "while"
+                let mut idx = self.current + 1;
+                let mut found_while = false;
+                while idx < self.tokens.len() {
+                    if let Some(token) = self.tokens.get(idx) {
+                        if !token.is_trivial() {
+                            if matches!(token.token_type, TokenType::DoWhile) {
+                                found_while = true;
+                            } else if let TokenType::Identifier(ref name) = token.token_type {
+                                if name.to_uppercase() == "WHILE" {
+                                    found_while = true;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    idx += 1;
+                }
+                if found_while {
+                    // Consume DO token first, then parse DO WHILE
+                    self.advance();
+                    self.parse_do_while_statement().map(|s| Some(s))
+                } else {
+                    self.parse_do_statement().map(|s| Some(s))
+                }
+            }
+            TokenType::Select => {
+                self.parse_select_case_statement().map(|s| Some(s))
             }
             TokenType::Read => {
                 self.parse_read_statement().map(|s| Some(s))
@@ -605,18 +632,138 @@ impl Parser {
         ))
     }
     
+    /// Parse a DO WHILE statement.
+    fn parse_do_while_statement(&mut self) -> ParseResult<Spanned<Statement>> {
+        // DO token already consumed, now consume WHILE or DoWhile token
+        if self.check_token(&TokenType::DoWhile) {
+            self.advance();
+        } else if let Some(token) = self.peek() {
+            if let TokenType::Identifier(ref name) = token.token_type {
+                if name.to_uppercase() == "WHILE" {
+                    self.advance();
+                } else {
+                    return Err(ParseError::UnexpectedToken {
+                        expected: vec!["WHILE".to_string()],
+                        found: token.clone(),
+                    });
+                }
+            } else {
+                return Err(ParseError::UnexpectedToken {
+                    expected: vec!["WHILE".to_string()],
+                    found: token.clone(),
+                });
+            }
+        } else {
+            return Err(ParseError::UnexpectedEof {
+                expected: vec!["WHILE".to_string()],
+            });
+        }
+        
+        self.consume_token(&TokenType::LeftParen)?;
+        let condition = self.parse_expression()?;
+        self.consume_token(&TokenType::RightParen)?;
+        
+        let statements = self.parse_executable_statements()?;
+        
+        if self.check_token(&TokenType::EndDo) {
+            self.advance();
+        }
+        
+        Ok(Spanned::new(
+            Statement::DoWhile {
+                condition,
+                statements,
+            },
+            self.create_span(0, 0, 1, 1),
+        ))
+    }
+    
+    /// Parse a SELECT CASE statement.
+    fn parse_select_case_statement(&mut self) -> ParseResult<Spanned<Statement>> {
+        self.consume_token(&TokenType::Select)?;
+        self.consume_token(&TokenType::Case)?;
+        self.consume_token(&TokenType::LeftParen)?;
+        let expression = self.parse_expression()?;
+        self.consume_token(&TokenType::RightParen)?;
+        
+        let mut cases = Vec::new();
+        let mut default_case = None;
+        
+        while !self.is_at_end() {
+            if self.check_token(&TokenType::Case) {
+                self.advance();
+                let selector = self.parse_case_selector()?;
+                let statements = self.parse_executable_statements()?;
+                cases.push(CaseClause {
+                    selector,
+                    statements,
+                });
+            } else if self.check_token(&TokenType::Default) {
+                self.advance();
+                default_case = Some(self.parse_executable_statements()?);
+            } else if self.check_token(&TokenType::EndSelect) {
+                break;
+            } else {
+                break;
+            }
+        }
+        
+        if self.check_token(&TokenType::EndSelect) {
+            self.advance();
+        }
+        
+        Ok(Spanned::new(
+            Statement::SelectCase {
+                expression,
+                cases,
+                default: default_case,
+            },
+            self.create_span(0, 0, 1, 1),
+        ))
+    }
+    
+    /// Parse a CASE selector.
+    fn parse_case_selector(&mut self) -> ParseResult<CaseSelector> {
+        if self.check_token(&TokenType::Default) {
+            self.advance();
+            return Ok(CaseSelector::Default);
+        }
+        
+        let start = self.parse_expression()?;
+        
+        // Check for range (start:end)
+        if self.check_token(&TokenType::Colon) {
+            self.advance();
+            let end = self.parse_expression()?;
+            Ok(CaseSelector::Range {
+                start,
+                end,
+            })
+        } else {
+            Ok(CaseSelector::Value(start))
+        }
+    }
+    
     /// Parse a READ statement.
     fn parse_read_statement(&mut self) -> ParseResult<Spanned<Statement>> {
         self.consume_token(&TokenType::Read)?;
         
-        // Simplified: READ(*,*) variables
+        // Simplified: READ(*,*) or READ *, variables
         let unit = None;
         let format = None;
         let iostat = None;
         let iomsg = None;
         
+        // Handle READ *, ... format
+        if self.check_token(&TokenType::Multiply) {
+            self.advance(); // consume *
+            if self.check_token(&TokenType::Comma) {
+                self.advance(); // consume comma
+            }
+        }
+        
         let mut variables = Vec::new();
-        if !self.is_at_end() {
+        if !self.is_at_end() && !self.check_token(&TokenType::Eof) {
             loop {
                 variables.push(self.parse_expression()?);
                 if !self.check_token(&TokenType::Comma) {
@@ -642,14 +789,31 @@ impl Parser {
     fn parse_write_statement(&mut self) -> ParseResult<Spanned<Statement>> {
         self.consume_token(&TokenType::Write)?;
         
-        // Simplified: WRITE(*,*) expressions
+        // Simplified: WRITE(*,*) or WRITE(*, *) expressions
         let unit = None;
         let format = None;
         let iostat = None;
         let iomsg = None;
         
+        // Handle WRITE(*,*) format - skip parentheses and asterisks
+        if self.check_token(&TokenType::LeftParen) {
+            self.advance(); // consume (
+            if self.check_token(&TokenType::Multiply) {
+                self.advance(); // consume *
+            }
+            if self.check_token(&TokenType::Comma) {
+                self.advance(); // consume ,
+            }
+            if self.check_token(&TokenType::Multiply) {
+                self.advance(); // consume *
+            }
+            if self.check_token(&TokenType::RightParen) {
+                self.advance(); // consume )
+            }
+        }
+        
         let mut expressions = Vec::new();
-        if !self.is_at_end() {
+        if !self.is_at_end() && !self.check_token(&TokenType::Eof) {
             loop {
                 expressions.push(self.parse_expression()?);
                 if !self.check_token(&TokenType::Comma) {
@@ -678,7 +842,15 @@ impl Parser {
         let format = None;
         let mut expressions = Vec::new();
         
-        if !self.is_at_end() {
+        // Handle PRINT *, ... format
+        if self.check_token(&TokenType::Multiply) {
+            self.advance(); // consume *
+            if self.check_token(&TokenType::Comma) {
+                self.advance(); // consume comma
+            }
+        }
+        
+        if !self.is_at_end() && !self.check_token(&TokenType::Eof) {
             loop {
                 expressions.push(self.parse_expression()?);
                 if !self.check_token(&TokenType::Comma) {
@@ -846,13 +1018,25 @@ impl Parser {
                     self.advance();
                     let args = self.parse_expression_list()?;
                     self.consume_token(&TokenType::RightParen)?;
-                    Ok(Spanned::new(
-                        Expression::FunctionCall {
-                            name,
-                            arguments: args,
-                        },
-                        self.create_span(0, 0, 1, 1),
-                    ))
+                    // Heuristic: if it looks like array access (single integer expression), treat as array
+                    // Otherwise treat as function call
+                    if args.len() == 1 && matches!(args[0].node, Expression::Literal(_) | Expression::Variable(_)) {
+                        Ok(Spanned::new(
+                            Expression::ArrayElement {
+                                variable: name,
+                                subscripts: args,
+                            },
+                            self.create_span(0, 0, 1, 1),
+                        ))
+                    } else {
+                        Ok(Spanned::new(
+                            Expression::FunctionCall {
+                                name,
+                                arguments: args,
+                            },
+                            self.create_span(0, 0, 1, 1),
+                        ))
+                    }
                 } else {
                     Ok(Spanned::new(
                         Expression::Variable(name),
@@ -862,9 +1046,34 @@ impl Parser {
             }
             TokenType::LeftParen => {
                 self.advance();
-                let expr = self.parse_expression()?;
+                // Check if it's an array constructor [expr1, expr2, ...]
+                let mut expressions = Vec::new();
+                if !self.check_token(&TokenType::RightParen) {
+                    loop {
+                        expressions.push(self.parse_expression()?);
+                        if !self.check_token(&TokenType::Comma) {
+                            break;
+                        }
+                        self.advance();
+                    }
+                }
                 self.consume_token(&TokenType::RightParen)?;
-                Ok(expr)
+                
+                // If multiple expressions, treat as array constructor
+                if expressions.len() > 1 {
+                    Ok(Spanned::new(
+                        Expression::ArrayConstructor(expressions),
+                        self.create_span(0, 0, 1, 1),
+                    ))
+                } else if expressions.len() == 1 {
+                    Ok(expressions.into_iter().next().unwrap())
+                } else {
+                    // Empty parentheses - just return the expression wrapped
+                    Ok(Spanned::new(
+                        Expression::Literal(Literal::integer("0")),
+                        self.create_span(0, 0, 1, 1),
+                    ))
+                }
             }
             _ => {
                 let token = self.peek().cloned().unwrap_or_else(|| self.create_eof_token());
@@ -982,8 +1191,15 @@ impl Parser {
     // Helper methods
     
     fn peek(&self) -> Option<&Token> {
-        self.tokens.get(self.current)
-            .filter(|t| !t.is_trivial() && t.token_type != TokenType::Eof)
+        let mut idx = self.current;
+        while idx < self.tokens.len() {
+            let token = &self.tokens[idx];
+            if !token.is_trivial() {
+                return Some(token);
+            }
+            idx += 1;
+        }
+        None
     }
     
     fn check_token(&self, token_type: &TokenType) -> bool {
@@ -1007,7 +1223,7 @@ impl Parser {
         while self.current < self.tokens.len() {
             let token = &self.tokens[self.current];
             self.current += 1;
-            if !token.is_trivial() && token.token_type != TokenType::Eof {
+            if !token.is_trivial() {
                 return Some(token);
             }
         }

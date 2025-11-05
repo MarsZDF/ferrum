@@ -12,3 +12,10 @@ categories = ["parsing", "development-tools"]
 [dependencies]
 fortran-lexer = { path = "../fortran-lexer" }
 fortran-ast = { path = "../fortran-ast" }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "parser_bench"
+harness = false

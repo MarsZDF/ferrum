@@ -7,3 +7,10 @@ repository.workspace = true
 edition.workspace = true
 
 [dependencies]
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "lexer_bench"
+harness = false
