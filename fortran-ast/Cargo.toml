@@ -1,0 +1,17 @@
+[package]
+name = "fortran-ast"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+description = "Abstract Syntax Tree (AST) data structures for FORTRAN programs"
+keywords = ["fortran", "ast", "parser", "compiler"]
+categories = ["parsing", "development-tools"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[features]
+default = []
+serialize = ["serde"]
