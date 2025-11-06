@@ -42,7 +42,7 @@ cargo run --example extract_signature <fortran-file>
 **Example output:**
 ```rust
 // Original FORTRAN 77 signature:
-//   SUBROUTINE COMPUTE(MODE, M, N, Y, F, FJAC, LDFJAC)
+//   SUBROUTINE COMPUTE(MODE, M, N, Y, F, MATRIX, LDM)
 
 // Modern Rust equivalent:
 pub fn compute(
@@ -51,8 +51,8 @@ pub fn compute(
     n: usize,
     y: &[f64],
     f: &[f64],
-    fjac: &mut [f64],
-    ldfjac: usize,
+    matrix: &mut [f64],
+    ldm: usize,
 ) -> Result<(), ComputeError> {
     // Implementation here
     Ok(())
@@ -65,8 +65,8 @@ def compute(
     n: int,
     y: np.ndarray,
     f: np.ndarray,
-    fjac: np.ndarray,
-    ldfjac: int
+    matrix: np.ndarray,
+    ldm: int
 ) -> ComputeResult:
     """Generated from FORTRAN subroutine."""
     # Implementation here
@@ -100,6 +100,25 @@ cargo run --example type_mapper <fortran-file>
 - Modern type equivalents (Rust and Python)
 - Generated interface structures
 - Migration recommendations
+
+#### `fixed_to_free.rs` - Format Converter
+Converts fixed-format FORTRAN 77 to modern free-format FORTRAN.
+
+**Usage:**
+```bash
+# Convert and save to file
+cargo run --example fixed_to_free legacy.f modern.f90
+
+# Convert and output to stdout
+cargo run --example fixed_to_free legacy.f
+```
+
+**Features:**
+- Converts column-based fixed-format to free-format
+- Modernizes comment style (c/C/* → !)
+- Preserves statement labels and logic flow
+- Handles line continuation properly
+- Applies appropriate indentation
 
 ## Format Support
 

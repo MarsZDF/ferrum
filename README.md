@@ -135,6 +135,9 @@ cd fortran-parser && cargo run --example extract_signature your_fortran_file.f
 cd fortran-parser && cargo run --example extract_docs your_fortran_file.f
 cd fortran-parser && cargo run --example type_mapper your_fortran_file.f
 
+# Convert fixed-format to free-format
+cd fortran-parser && cargo run --example fixed_to_free legacy.f modern.f90
+
 # Parse any FORTRAN file (auto-detects format)
 cd fortran-parser && cargo run your_fortran_file.f
 ```

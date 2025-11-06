@@ -35,9 +35,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     for (i, arg) in sub.arguments.iter().enumerate() {
                         let rust_type = match arg.name.as_str() {
                             "MODE" => "&mut i32",
-                            "M" | "N" | "LDFJAC" | "LWK" | "LIWK" => "usize",
+                            "M" | "N" | "LDM" | "LWK" | "LIWK" => "usize",
                             "Y" | "F" | "YSCALE" | "FAC" => "&[f64]", 
-                            "FJAC" => "&mut [f64]",
+                            "MATRIX" => "&mut [f64]",
                             "WK" => "&mut [f64]",
                             "IWK" => "&mut [i32]",
                             "IOPT" => "&[i32]",
@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         
                         println!("    {}: {},", arg.name.to_lowercase(), rust_type);
                     }
-                    println!(") -> Result<(), JacobianError> {{");
+                    println!(") -> Result<(), ComputeError> {{");
                     println!("    // Implementation here");
                     println!("    Ok(())");
                     println!("}}");
@@ -57,8 +57,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     for (i, arg) in sub.arguments.iter().enumerate() {
                         let py_type = match arg.name.as_str() {
                             "MODE" => "mode: int",
-                            "M" | "N" | "LDFJAC" | "LWK" | "LIWK" => &format!("{}: int", arg.name.to_lowercase()),
-                            "Y" | "F" | "YSCALE" | "FAC" | "FJAC" | "WK" => &format!("{}: np.ndarray", arg.name.to_lowercase()),
+                            "M" | "N" | "LDM" | "LWK" | "LIWK" => &format!("{}: int", arg.name.to_lowercase()),
+                            "Y" | "F" | "YSCALE" | "FAC" | "MATRIX" | "WK" => &format!("{}: np.ndarray", arg.name.to_lowercase()),
                             "IWK" | "IOPT" => &format!("{}: np.ndarray", arg.name.to_lowercase()),
                             _ => &format!("{}: np.ndarray", arg.name.to_lowercase())
                         };
@@ -69,8 +69,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("    {},", py_type);
                         }
                     }
-                    println!(") -> JacobianResult:");
-                    println!("    \"\"\"Compute numerical Jacobian using finite differences.\"\"\"");
+                    println!(") -> ComputeResult:");
+                    println!("    \"\"\"FORTRAN subroutine extracted and modernized.\"\"\"");
                     println!("    # Implementation here");
                     println!("    pass");
                 }
