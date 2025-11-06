@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Complete FORTRAN 77 fixed-format support** - Full implementation of column-based parsing
+  - FixedFormatLexer with proper column handling (1-5: labels, 6: continuation, 7-72: code)
+  - Comment line detection (c, C, *, ! in column 1) with support for any characters
+  - Statement label and continuation line processing
+  - Real-world compatibility with legacy numerical libraries
+- **Automatic format detection** - Parser now auto-detects fixed vs free format
+- **FORTRAN modernization analysis tools**:
+  - `extract_signature` - Generates modern Rust/Python interfaces from FORTRAN subroutines
+  - `extract_docs` - Extracts and formats documentation from FORTRAN comments
+  - `type_mapper` - Analyzes parameter types and generates modern type mappings
 - Enhanced FORTRAN parser CHARACTER type handling with length specification support (`character(len=10)`)
 - Improved assignment statement parsing logic
 - Better expression parsing for executable statements
@@ -15,9 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced attribute parsing for variable declarations (INTENT, DIMENSION, ALLOCATABLE)
 
 ### Fixed
+- **Critical parser format detection bug** - Parser now uses detected format instead of hardcoded free-format
 - Fixed double colon (`::`) parsing in FORTRAN type declarations
 - Resolved clippy warnings across all crates
 - Fixed assignment vs equality operator precedence in expression parsing
+
+### Changed
+- Parser now automatically detects and uses appropriate lexer (fixed vs free format)
+- CLI messaging updated to indicate successful fixed-format detection
 - Improved token position tracking in parser
 - Better handling of whitespace and comment tokens
 
