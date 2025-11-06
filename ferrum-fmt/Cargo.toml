@@ -1,0 +1,26 @@
+[package]
+name = "ferrum-fmt"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+description = "Auto-formatter for FORTRAN source code (like rustfmt or black)"
+keywords = ["fortran", "formatter", "formatting", "code-style", "development-tools"]
+categories = ["development-tools", "parser-implementations"]
+
+[dependencies]
+fortran-lexer = { path = "../fortran-lexer" }
+fortran-parser = { path = "../fortran-parser" }
+fortran-ast = { path = "../fortran-ast" }
+clap = { workspace = true }
+anyhow = { workspace = true }
+
+[lib]
+name = "ferrum_fmt"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ferrum-fmt"
+path = "src/main.rs"
+

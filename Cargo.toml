@@ -1,6 +1,6 @@
 [workspace]
 members = ["fortran-ast",
-    "fortran-lexer", "fortran-parser",
+    "fortran-lexer", "fortran-parser", "ferrum-fmt",
 ]
 resolver = "2"
 
@@ -14,4 +14,6 @@ edition = "2021"
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
 criterion = { version = "0.5", features = ["html_reports"] }
+clap = { version = "4.0", features = ["derive"] }
+anyhow = "1.0"
 

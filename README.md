@@ -64,6 +64,23 @@ Recursive descent parser that converts tokens into a structured AST with full FO
 
 [📖 Documentation](fortran-parser/README.md) | [Examples](fortran-parser/examples/)
 
+### ferrum-fmt
+Auto-formatter for FORTRAN source code (like `rustfmt` or `black`).
+
+**Features**:
+- ✅ Configurable indentation (spaces/tabs, width)
+- ✅ Keyword case normalization (UPPER, lower, preserve)
+- ✅ Identifier case normalization
+- ✅ Spacing around operators
+- ✅ Column alignment for declarations
+- ✅ Line length enforcement
+- ✅ Comment preservation
+- ✅ FORTRAN 77 and modern style presets
+
+**Status**: ✅ Core functionality ready
+
+[📖 Documentation](ferrum-fmt/README.md) | [Examples](ferrum-fmt/examples/)
+
 ## 🚀 Quick Start
 
 ### Installation
