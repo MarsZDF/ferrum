@@ -16,9 +16,7 @@ pub fn tokenize(source: &str, format: Format) -> LexResult<Vec<Token>> {
             lexer.tokenize()
         }
         Format::FixedFormat => {
-            // TODO: Implement fixed-format lexer
-            // For now, fall back to free-format
-            let mut lexer = FreeFormatLexer::new(source);
+            let mut lexer = FixedFormatLexer::new(source);
             lexer.tokenize()
         }
     }
@@ -433,6 +431,196 @@ impl<'a> FreeFormatLexer<'a> {
     fn create_token(&self, token_type: TokenType, lexeme: &str, start_pos: usize, line: usize, column: usize) -> Token {
         let end_pos = start_pos + lexeme.len();
         Token::new(token_type, lexeme.to_string(), line, column, start_pos, end_pos)
+    }
+}
+
+/// Fixed-format FORTRAN lexer (FORTRAN 77 and earlier).
+/// 
+/// Handles the column-based format where:
+/// - Columns 1-5: Statement labels (optional)
+/// - Column 6: Continuation indicator (space/0 = new statement, other = continuation)
+/// - Columns 7-72: FORTRAN code
+/// - Columns 73-80: Comments/sequence numbers (ignored)
+/// - Column 1 = C, c, *, !: Comment line
+pub struct FixedFormatLexer<'a> {
+    source: &'a str,
+    lines: Vec<&'a str>,
+    current_line_index: usize,
+    tokens: Vec<Token>,
+}
+
+impl<'a> FixedFormatLexer<'a> {
+    pub fn new(source: &'a str) -> Self {
+        let lines: Vec<&str> = source.lines().collect();
+        Self {
+            source,
+            lines,
+            current_line_index: 0,
+            tokens: Vec::new(),
+        }
+    }
+    
+    pub fn tokenize(&mut self) -> LexResult<Vec<Token>> {
+        // Process each line according to fixed-format rules
+        while self.current_line_index < self.lines.len() {
+            self.process_line()?;
+            self.current_line_index += 1;
+        }
+        
+        // Add EOF token
+        let eof_token = Token::new(
+            TokenType::Eof,
+            String::new(),
+            self.current_line_index + 1,
+            1,
+            self.source.len(),
+            self.source.len()
+        );
+        self.tokens.push(eof_token);
+        
+        Ok(self.tokens.clone())
+    }
+    
+    fn process_line(&mut self) -> LexResult<()> {
+        let line = self.lines[self.current_line_index];
+        let line_number = self.current_line_index + 1;
+        
+        // Handle empty lines
+        if line.trim().is_empty() {
+            return Ok(());
+        }
+        
+        // Check for comment lines (C, c, *, ! in column 1)
+        if let Some(first_char) = line.chars().next() {
+            if matches!(first_char, 'C' | 'c' | '*' | '!') {
+                self.tokenize_comment_line(line, line_number)?;
+                return Ok(());
+            }
+        }
+        
+        // Process fixed-format statement line
+        self.process_statement_line(line, line_number)
+    }
+    
+    fn tokenize_comment_line(&mut self, line: &str, line_number: usize) -> LexResult<()> {
+        let start_pos = self.calculate_byte_position(line_number, 1);
+        let comment_token = Token::new(
+            TokenType::Comment(line.to_string()),
+            line.to_string(),
+            line_number,
+            1,
+            start_pos,
+            start_pos + line.len()
+        );
+        self.tokens.push(comment_token);
+        Ok(())
+    }
+    
+    fn process_statement_line(&mut self, line: &str, line_number: usize) -> LexResult<()> {
+        // FORTRAN 77 fixed format:
+        // Cols 1-5: Statement label (optional)
+        // Col 6: Continuation indicator
+        // Cols 7-72: FORTRAN code
+        // Cols 73-80: Comments (ignored)
+        
+        let chars: Vec<char> = line.chars().collect();
+        
+        // Handle short lines
+        if chars.is_empty() {
+            return Ok(());
+        }
+        
+        // Extract statement label (columns 1-5)
+        let label_part = if chars.len() >= 5 {
+            chars[0..5].iter().collect::<String>()
+        } else {
+            chars.iter().collect::<String>()
+        };
+        
+        // Check for statement label
+        let label_trimmed = label_part.trim();
+        if !label_trimmed.is_empty() && label_trimmed.chars().all(|c| c.is_ascii_digit()) {
+            let start_pos = self.calculate_byte_position(line_number, 1);
+            let label_token = Token::new(
+                TokenType::IntegerLiteral(label_trimmed.to_string()),
+                label_trimmed.to_string(),
+                line_number,
+                1,
+                start_pos,
+                start_pos + label_trimmed.len()
+            );
+            self.tokens.push(label_token);
+        }
+        
+        // Check continuation indicator (column 6)
+        let is_continuation = if chars.len() >= 6 {
+            let continuation_char = chars[5];
+            continuation_char != ' ' && continuation_char != '0'
+        } else {
+            false
+        };
+        
+        // Extract code part (columns 7-72)
+        let code_start = 6; // 0-indexed, so column 7
+        let code_end = if chars.len() > 72 { 72 } else { chars.len() };
+        
+        if code_start < chars.len() {
+            let code_part: String = chars[code_start..code_end].iter().collect();
+            
+            // Tokenize the code part using a similar approach to free-format
+            // but adapted for the fixed-format context
+            self.tokenize_code_segment(&code_part, line_number, code_start + 1, is_continuation)?;
+        }
+        
+        Ok(())
+    }
+    
+    fn tokenize_code_segment(&mut self, code: &str, line_number: usize, start_column: usize, _is_continuation: bool) -> LexResult<()> {
+        // Create a mini free-format lexer for the code segment
+        let mut segment_lexer = FreeFormatLexer::new(code);
+        let segment_tokens = segment_lexer.tokenize()?;
+        
+        // Adjust the tokens to have correct line/column positions
+        for token in segment_tokens {
+            if token.token_type == TokenType::Eof {
+                continue; // Skip EOF tokens from segments
+            }
+            
+            let lexeme_len = token.lexeme.len();
+            let adjusted_token = Token::new(
+                token.token_type,
+                token.lexeme,
+                line_number,
+                start_column + token.column - 1,
+                self.calculate_byte_position(line_number, start_column + token.column - 1),
+                self.calculate_byte_position(line_number, start_column + token.column - 1) + lexeme_len
+            );
+            self.tokens.push(adjusted_token);
+        }
+        
+        Ok(())
+    }
+    
+    fn calculate_byte_position(&self, line_number: usize, column: usize) -> usize {
+        let mut pos = 0;
+        
+        // Add bytes from previous lines
+        for i in 0..(line_number - 1) {
+            if i < self.lines.len() {
+                pos += self.lines[i].len() + 1; // +1 for newline
+            }
+        }
+        
+        // Add bytes from current line up to column
+        if line_number > 0 && line_number <= self.lines.len() {
+            let line = self.lines[line_number - 1];
+            let chars: Vec<char> = line.chars().collect();
+            for i in 0..(column - 1).min(chars.len()) {
+                pos += chars[i].len_utf8();
+            }
+        }
+        
+        pos
     }
 }
 

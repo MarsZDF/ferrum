@@ -31,9 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Detected format: {:?}", format);
     
     if format == fortran_lexer::Format::FixedFormat {
-        eprintln!("⚠️  Warning: Fixed-format FORTRAN detected, but fixed-format lexer is not yet implemented.");
-        eprintln!("   The parser will attempt to parse as free-format, which may fail.");
-        eprintln!("   Fixed-format support is coming soon!\n");
+        println!("✅ Fixed-format FORTRAN detected - using fixed-format lexer!");
     }
     
     // Parse the source

@@ -6,7 +6,7 @@ use fortran_ast::{
 };
 use fortran_ast::program::{Argument, ContainsSection, InternalProcedure};
 use fortran_ast::statement::{ElseIfClause, CaseClause, CaseSelector};
-use fortran_lexer::{tokenize, Format, Token, TokenType};
+use fortran_lexer::{tokenize, detect_format, Token, TokenType};
 use crate::error::{ParseError, ParseResult};
 
 /// FORTRAN parser.
@@ -18,7 +18,8 @@ pub struct Parser {
 impl Parser {
     /// Create a new parser from source code.
     pub fn new(source: &str) -> ParseResult<Self> {
-        let tokens = tokenize(source, Format::FreeFormat)?;
+        let format = detect_format(source);
+        let tokens = tokenize(source, format)?;
         Ok(Self {
             tokens,
             current: 0,
