@@ -27,3 +27,6 @@ Thumbs.db
 **/*.dll
 **/*.exe
 
+# Private development files
+TODO.md
+

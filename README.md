@@ -2,6 +2,14 @@
 
 A modular, open-source FORTRAN tooling ecosystem in Rust. Ferrum provides a collection of small, composable libraries that form the foundation for FORTRAN analysis, refactoring, and modernization tools.
 
+## ✨ **NEW: Dead Code Analysis**
+Ferrum now includes a production-ready dead code analyzer that identifies:
+- 🗑️ Unused variables and parameters  
+- ☠️ Dead/unreachable subroutines and functions
+- 📊 Comprehensive cleanup recommendations with statistics
+
+Perfect for refactoring large legacy FORTRAN codebases in aerospace, physics simulations, and scientific computing.
+
 ## 🎯 Goals
 
 - **Modular**: Small, focused crates that work together
@@ -31,7 +39,7 @@ Fast, modular lexer for FORTRAN source code supporting both fixed-format and fre
 [📖 Documentation](fortran-lexer/README.md) | [Examples](fortran-lexer/examples/)
 
 ### fortran-ast
-Abstract Syntax Tree (AST) data structures for FORTRAN programs.
+Abstract Syntax Tree (AST) data structures and analysis infrastructure for FORTRAN programs.
 
 **Features**:
 - ✅ Complete AST representation of FORTRAN program units (PROGRAM, SUBROUTINE, FUNCTION, MODULE)
@@ -40,9 +48,13 @@ Abstract Syntax Tree (AST) data structures for FORTRAN programs.
 - ✅ Statement structures (IF, DO, SELECT CASE, I/O statements, etc.)
 - ✅ Source span tracking for all nodes
 - ✅ Visitor pattern for AST traversal
+- ✅ **Symbol table system for tracking definitions and usage**
+- ✅ **Call graph builder for procedure dependency analysis**
+- ✅ **`AnalysisVisitor` trait for extensible static analysis**
+- ✅ **Comprehensive scope management (global, program, subroutine, function)**
 - ✅ Optional serialization support (serde)
 
-**Status**: ✅ Core structures defined
+**Status**: ✅ Production ready with analysis infrastructure
 
 [📖 Documentation](fortran-ast/README.md)
 
@@ -124,6 +136,43 @@ for token in tokens {
 }
 ```
 
+### Dead Code Analysis
+
+```rust
+use fortran_parser::parse;
+use fortran_ast::AnalysisVisitor;
+
+// Legacy FORTRAN with dead code
+let fortran_code = r#"
+      SUBROUTINE MAIN  
+      INTEGER USED_VAR, UNUSED_VAR
+      REAL ANOTHER_UNUSED
+      USED_VAR = 42
+      CALL USED_SUBROUTINE(USED_VAR)
+      END
+
+      SUBROUTINE USED_SUBROUTINE(X)
+      INTEGER X
+      PRINT *, X
+      END
+      
+      SUBROUTINE DEAD_SUBROUTINE
+      INTEGER DEAD_VAR
+      DEAD_VAR = 99
+      END
+"#;
+
+let program = parse(fortran_code)?;
+let mut analyzer = DeadCodeAnalyzer::new();
+analyzer.analyze_program(&program);
+
+// Outputs detailed analysis:
+// 🗑️  UNUSED VARIABLES: UNUSED_VAR, ANOTHER_UNUSED
+// ☠️  DEAD PROCEDURES: DEAD_SUBROUTINE  
+// 📊 Dead code percentage: 50.0%
+println!("{}", analyzer.generate_report());
+```
+
 ### Running Examples
 
 ```bash
@@ -137,6 +186,9 @@ cd fortran-parser && cargo run --example type_mapper your_fortran_file.f
 
 # Convert fixed-format to free-format
 cd fortran-parser && cargo run --example fixed_to_free legacy.f modern.f90
+
+# Dead code analysis for legacy FORTRAN cleanup  
+cd fortran-parser && cargo run --example dead_code_analyzer your_fortran_file.f
 
 # Parse any FORTRAN file (auto-detects format)
 cd fortran-parser && cargo run your_fortran_file.f
@@ -164,13 +216,14 @@ cd fortran-parser && cargo run your_fortran_file.f
            │
            v
 ┌─────────────────────┐
-│   fortran-ast       │ AST data structures
-│                     │ (with visitor pattern)
+│   fortran-ast       │ AST + Symbol Tables + Call Graphs
+│                     │ (visitor pattern + analysis)
 └──────────┬──────────┘
            │
            v
 ┌─────────────────────┐
-│   Analyzers         │ Static analysis, refactoring, etc.
+│   Analysis Tools    │ Dead code detection ✅
+│                     │ Performance hints, migration tools
 └─────────────────────┘
 ```
 
@@ -265,10 +318,12 @@ Licensed under the MIT License - see [LICENSE](LICENSE) for details.
 ### Completed ✅
 - [x] fortran-lexer - Free-format FORTRAN lexer  
 - [x] fortran-lexer - Fixed-format FORTRAN 77 lexer
-- [x] fortran-ast - Core AST structures
+- [x] fortran-ast - Core AST structures with analysis infrastructure
 - [x] fortran-parser - Basic parser implementation with format detection
+- [x] **Dead code analyzer - Production-ready static analysis tool**
+- [x] Symbol table and call graph analysis infrastructure
 - [x] Modernization analysis tools (signature extraction, documentation, type mapping)
-- [x] Comprehensive test suite for lexer and parser
+- [x] Comprehensive test suite for lexer, parser, and analyzer
 - [x] CI/CD pipeline setup
 - [x] Production readiness (error handling, documentation, examples)
 
@@ -276,13 +331,13 @@ Licensed under the MIT License - see [LICENSE](LICENSE) for details.
 - [ ] fortran-parser - Full FORTRAN grammar support (remaining statements and expressions)
 
 ### Planned 📋
-- [ ] fortran-analyzer-* - Analysis modules
+- [ ] fortran-analyzer-* - Additional analysis modules
+  - [ ] Performance analysis hints
   - [ ] Code quality metrics
-  - [ ] Dead code detection
-  - [ ] Performance analysis
+  - [ ] Automated migration from fixed-format to free-format
   - [ ] Modernization suggestions
 - [ ] Language server support (LSP)
-- [ ] Formatter
+- [ ] Enhanced formatter with more configuration options
 - [ ] Refactoring tools
 - [ ] REPL for FORTRAN exploration
 
@@ -324,7 +379,7 @@ ferrum/
 │   │   └── error.rs        # LexError types
 │   ├── tests/
 │   └── examples/
-├── fortran-ast/            # AST data structures
+├── fortran-ast/            # AST data structures + analysis
 │   ├── src/
 │   │   ├── lib.rs          # Main exports
 │   │   ├── program.rs      # Program, ProgramUnit, MainProgram, etc.
@@ -332,7 +387,8 @@ ferrum/
 │   │   ├── statement.rs    # Statements (IF, DO, SELECT CASE, etc.)
 │   │   ├── expression.rs   # Expressions (arithmetic, logical, calls)
 │   │   ├── span.rs         # Source location tracking
-│   │   └── visitor.rs      # Visitor pattern for AST traversal
+│   │   ├── visitor.rs      # Visitor pattern + AnalysisVisitor trait
+│   │   └── analysis.rs     # Symbol tables, call graphs, analysis infra
 │   └── tests/
 ├── fortran-parser/         # Parsing layer
 │   ├── src/
@@ -341,6 +397,7 @@ ferrum/
 │   ├── tests/
 │   │   └── integration_tests.rs  # Comprehensive test suite
 │   └── examples/
+│       └── dead_code_analyzer.rs # Production dead code analysis tool
 └── Cargo.toml              # Workspace configuration
 ```
 
@@ -482,7 +539,9 @@ let tokens = tokenize(legacy_fortran, format)?; // Works seamlessly
 - **Token definitions**: `fortran-lexer/src/token.rs`
 - **Lexer logic**: `fortran-lexer/src/lexer.rs`
 - **AST definitions**: `fortran-ast/src/*.rs`
+- **Analysis infrastructure**: `fortran-ast/src/analysis.rs`
 - **Parser logic**: `fortran-parser/src/parser.rs` (main file)
+- **Dead code analyzer**: `fortran-parser/examples/dead_code_analyzer.rs`
 - **Parser tests**: `fortran-parser/tests/integration_tests.rs`
 - **Workspace config**: `Cargo.toml` (root)
 - **CI/CD**: `.github/workflows/ci.yml`
